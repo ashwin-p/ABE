@@ -1,9 +1,37 @@
 import socket
 import json
 import hashlib
+import base64
+import hashlib
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
 
 isLoggedIn = False
 uname = ""
+urole = ""
+
+def decrypt(ciphertext, key):
+    # Convert the base64 encoded ciphertext to bytes
+    ciphertext_bytes = base64.b64decode(ciphertext)
+
+    # Initialize the cipher with AES algorithm, ECB mode, and the provided key
+    cipher = Cipher(algorithms.AES(key), modes.ECB(), backend=default_backend())
+    decryptor = cipher.decryptor()
+
+    # Decrypt the ciphertext
+    padded_plaintext = decryptor.update(ciphertext_bytes) + decryptor.finalize()
+
+    # Unpad the plaintext
+    unpadder = padding.PKCS7(128).unpadder()
+    plaintext_bytes = unpadder.update(padded_plaintext) + unpadder.finalize()
+
+    # Convert the plaintext bytes to a string
+    plaintext = plaintext_bytes.decode('utf-8')
+
+    return plaintext
+
 
 def login_or_signup():
     while True:
@@ -17,10 +45,12 @@ def login_or_signup():
  
 def get_credentials():
     global uname
+    global urole
     username = input("Enter your username: ")
     uname = username
     password = input("Enter your password: ")
     role = input("Enter your role: ")
+    urole = role
     hashed_password = hashlib.sha256(password.encode()).hexdigest()
     return {'username': username, 'password': hashed_password, 'role': role}
 
@@ -81,12 +111,12 @@ def notLoggedIn():
                 isLoggedIn = True
                 break
 def loggedIn():
-    request = {'action': 'getData', **buildQuery()}
+    request = {'action': 'getData', **buildQuery(), 'role': urole}
     response = send_request(request)
     if response.get('error', '') != '':
         print('Error: ', response.get('error', ''))
     else:
-        print('Query successful: ', response.get('message', ''))
+        print('Query successful: ', decrypt(response.get('message', '')))
 
 def main():
     global isLoggedIn

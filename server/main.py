@@ -1,10 +1,33 @@
 import socket
 import json
 import sqlite3
+import base64
+import hashlib
+from cryptography.hazmat.primitives import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+
 
 # Connect to database
 conn = sqlite3.connect('EHR.db')
 cursor = conn.cursor()
+
+def encrypt(plaintext, key):
+    # Convert the plaintext and key to bytes
+    plaintext_bytes = plaintext.encode('utf-8')
+    
+    # Pad the plaintext to a multiple of 128 bits (16 bytes)
+    padder = padding.PKCS7(128).padder()
+    padded_plaintext = padder.update(plaintext_bytes) + padder.finalize()
+
+    # Initialize the cipher with AES algorithm, ECB mode, and the provided key
+    cipher = Cipher(algorithms.AES(key), modes.ECB(), backend=default_backend())
+    encryptor = cipher.encryptor()
+
+    # Encrypt the padded plaintext
+    ciphertext = encryptor.update(padded_plaintext) + encryptor.finalize()
+
+    return ciphertext
 
 def handle_request(data):
     action = data.get('action')
@@ -55,10 +78,16 @@ def handleSignUp(request):
 
 def handleGetData(request):
     query = request.get('query')
+    role = request.get('role')
+    firstname = request.get('uname').split('.')[0]
+    if role == 'patient' or role == 'doctor':
+        if firstname not in query:
+            return json.dumps({'error': 'Invalid query.'}), 400
     try:
         cursor.execute(query)
         res = cursor.fetchall()
-        return json.dumps({'message': res}), 200
+        res = str(res)
+        return json.dumps({'message': encrypt(res, "secret")}), 200
     except sqlite3.IntegrityError:
         return json.dumps({'error': 'Invalid query.'}), 400
 
